@@ -1,5 +1,17 @@
-#[derive(serde::Deserialize, serde::Serialize)]
+/// Default storage key for my app.
+pub const STORAGE_KEY: &'static str = "tye_home";
+
+/// Creates the storage key for the given page.
+/// This is a macro due to ownership limitations.
+macro_rules! page_storage_key {
+    ($string:expr) => {
+        format! {"{STORAGE_KEY}-{}", $string}.as_str()
+    };
+}
+
+#[derive(serde::Deserialize, serde::Serialize, Debug)]
 #[serde(default)]
+/// Contains the data for the example page.
 pub struct Example {
     // Example stuff:
     pub label: String,
@@ -17,7 +29,8 @@ impl Default for Example {
     }
 }
 
-#[derive(serde::Deserialize, serde::Serialize, kinded::Kinded)]
+// Kinded generates a "kind" enum equivalent to this enum; similar to `ErrorKind`
+#[derive(serde::Deserialize, serde::Serialize, kinded::Kinded, Debug)]
 #[kinded(derive(serde::Deserialize, serde::Serialize), kind = Page)]
 /// The possible pages that can be displayed
 pub enum PageData {
@@ -31,7 +44,24 @@ impl Default for PageData {
     }
 }
 
+impl PageData {
+    /// Saves the data from this page to storage.
+    pub fn save(&self, frame: &mut eframe::Frame) {
+        let page = self.kind();
+        log::debug!("Saving path: {}", page_storage_key!(page));
+
+        match frame.storage_mut() {
+            Some(storage) => {
+                log::debug!("Saving data: {:?}", self);
+                eframe::set_value(storage, page_storage_key!(page), self);
+            }
+            None => log::error!("Failed to save path: {}", page_storage_key!(page)),
+        }
+    }
+}
+
 impl Into<PageData> for Page {
+    /// Converts a [`Page`] into its respective default [`PageData`].
     fn into(self) -> PageData {
         match self {
             Page::Home => PageData::Home,
@@ -40,25 +70,49 @@ impl Into<PageData> for Page {
     }
 }
 
-/// We derive Deserialize/Serialize so we can persist app state on shutdown.
+impl Page {
+    /// Creates a [`PageData`] instance from the stored values for this page.
+    ///
+    /// If no data exists then the default data is used instead.
+    pub fn load(self, frame: &mut eframe::Frame) -> PageData {
+        log::debug!("Loading path: {}", page_storage_key!(self));
+
+        match frame.storage() {
+            Some(storage) => {
+                let page_data =
+                    eframe::get_value(storage, page_storage_key!(self)).unwrap_or_default();
+                log::debug!("Loading data: {:?}", page_data);
+                page_data
+            }
+            None => self.into(),
+        }
+    }
+}
+
+// We derive Deserialize/Serialize so we can persist app state on shutdown.
 #[derive(serde::Deserialize, serde::Serialize)]
 #[serde(default)]
+/// Contains the current in-memory data for my app.
 pub struct MyApp {
-    page: Page,
     page_data: PageData,
 }
 
 impl MyApp {
-    pub fn switch_page(&mut self, page: Page) {
-        self.page = page;
-        self.page_data = page.into();
+    /// Gets the [`Page`] that the current [`PageData`] represents.
+    pub fn page(&self) -> Page {
+        self.page_data.kind()
+    }
+
+    /// Saves the current [`PageData`] & loads the [`PageData`] for the given [`Page`].
+    pub fn switch_page(&mut self, page: Page, frame: &mut eframe::Frame) {
+        self.page_data.save(frame);
+        self.page_data = page.load(frame);
     }
 }
 
 impl Default for MyApp {
     fn default() -> Self {
         Self {
-            page: Page::Example,
             page_data: PageData::Example(Example::default()),
         }
     }
@@ -73,7 +127,7 @@ impl MyApp {
         // Load previous app state (if any).
         // Note that you must enable the `persistence` feature for this to work.
         if let Some(storage) = cc.storage {
-            return eframe::get_value(storage, eframe::APP_KEY).unwrap_or_default();
+            return eframe::get_value(storage, STORAGE_KEY).unwrap_or_default();
         }
 
         Default::default()
@@ -81,13 +135,12 @@ impl MyApp {
 }
 
 impl eframe::App for MyApp {
-    /// Called by the frame work to save state before shutdown.
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
-        eframe::set_value(storage, eframe::APP_KEY, self);
+        eframe::set_value(storage, STORAGE_KEY, self);
     }
 
     /// Called each time the UI needs repainting, which may be many times per second.
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+    fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
         // Put your widgets into a `SidePanel`, `TopBottomPanel`, `CentralPanel`, `Window` or `Area`.
         // For inspiration and more examples, go to https://emilk.github.io/egui
 
@@ -110,15 +163,16 @@ impl eframe::App for MyApp {
                 ui.add(egui::Separator::default().vertical());
 
                 let home_button =
-                    ui.add(egui::Button::new("Home").selected(self.page == Page::Home));
+                    ui.add(egui::Button::new("Home").selected(self.page() == Page::Home));
                 let example_button =
-                    ui.add(egui::Button::new("Example").selected(self.page == Page::Example));
+                    ui.add(egui::Button::new("Example").selected(self.page() == Page::Example));
 
                 if home_button.clicked() {
-                    self.switch_page(Page::Home);
+                    self.switch_page(Page::Home, frame);
                 }
                 if example_button.clicked() {
-                    self.switch_page(Page::Example);
+                    self.switch_page(Page::Example, frame);
+                }
                 }
             });
         });
