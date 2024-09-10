@@ -1,3 +1,5 @@
+use crate::js_imports;
+
 /// Default storage key for my app.
 pub const STORAGE_KEY: &'static str = "tye_home";
 
@@ -189,6 +191,11 @@ impl eframe::App for MyApp {
 
                     // Sets the current page to its default.
                     self.page_data = self.page().load(frame);
+                }
+
+                let is_mobile = ui.add(egui::Button::new("Is Mobile?"));
+                if is_mobile.clicked() {
+                    log::info!("Is Mobile: {}", js_imports::is_mobile())
                 }
             });
         });
