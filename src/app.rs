@@ -173,6 +173,22 @@ impl eframe::App for MyApp {
                 if example_button.clicked() {
                     self.switch_page(Page::Example, frame);
                 }
+
+                let debug_page = ui.add(egui::Button::new("Debug Page"));
+                if debug_page.clicked() {
+                    log::info!("Page: {}\nPageData: {:?}", self.page(), self.page_data);
+                }
+
+                let reset_storage = ui.add(egui::Button::new("Reset Storage"));
+                if reset_storage.clicked() {
+                    // Overwrites the saved data with default values.
+                    for page in Page::all().to_owned() {
+                        let page_data: PageData = page.into();
+                        page_data.save(frame);
+                    }
+
+                    // Sets the current page to its default.
+                    self.page_data = self.page().load(frame);
                 }
             });
         });
