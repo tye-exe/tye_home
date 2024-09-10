@@ -115,7 +115,7 @@ impl MyApp {
 impl Default for MyApp {
     fn default() -> Self {
         Self {
-            page_data: PageData::Example(Example::default()),
+            page_data: PageData::Home,
         }
     }
 }
@@ -231,7 +231,25 @@ impl eframe::App for MyApp {
                         egui::warn_if_debug_build(ui);
                     });
                 }
-                PageData::Home => {}
+                PageData::Home => {
+                    ui.heading("Welcome!");
+                    ui.separator();
+                    ui.label("Hello, i'm tye! I'm non-binary & go by they/them, thank you for being respectfull.");
+                    ui.label("");
+
+                    // ui.with_layout(, )
+                    ui.horizontal_wrapped(|ui| {
+                        let vec2 = ui.style().spacing.item_spacing.clone();
+                        ui.style_mut().spacing.item_spacing = egui::Vec2::new(0.0,0.0 );
+                        
+                        ui.label("My favorite pastime is fighting with computers, which ");
+                        ui.label(egui::RichText::new("sometimes").italics());
+                        ui.label(" goes smoothly.");
+                        // ui.label("test o.0");
+
+                        ui.style_mut().spacing.item_spacing = vec2;
+                    });
+                }
             }
         });
     }
