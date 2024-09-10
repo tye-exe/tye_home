@@ -20,7 +20,7 @@ fn main() -> eframe::Result {
     eframe::run_native(
         "eframe template",
         native_options,
-        Box::new(|cc| Ok(Box::new(eframe_template::TemplateApp::new(cc)))),
+        Box::new(|cc| Ok(Box::new(tye_home::MyApp::new(cc)))),
     )
 }
 
@@ -37,14 +37,16 @@ fn main() {
             .start(
                 "the_canvas_id",
                 web_options,
-                Box::new(|cc| Ok(Box::new(eframe_template::TemplateApp::new(cc)))),
+                Box::new(|cc| Ok(Box::new(tye_home::MyApp::new(cc)))),
             )
             .await;
 
-        // Remove the loading text and spinner:
+        // Remove the loading text and spinner.
+        // Otherwise it'll be permanently present.
         let loading_text = web_sys::window()
             .and_then(|w| w.document())
             .and_then(|d| d.get_element_by_id("loading_text"));
+
         if let Some(loading_text) = loading_text {
             match start_result {
                 Ok(_) => {
