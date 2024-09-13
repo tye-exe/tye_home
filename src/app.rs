@@ -99,21 +99,29 @@ impl Page {
 #[derive(serde::Deserialize, serde::Serialize)]
 #[serde(default)]
 /// Contains the current in-memory data for my app.
-pub struct MyApp<'a> {
+pub struct MyApp {
     /// The data for the currently rendered page.
     page_data: PageData,
 
+    /// Whether the debug window is open.
+    debug_window: bool,
+
     #[serde(skip)]
     /// A buffer of the 'x' most recent logs.
-    logs: CircularQueue<&'a str>,
+    logs: CircularQueue<String>,
     #[serde(skip)]
     /// Receives log messages to display.
     log_receiver: Option<mpsc::Receiver<LogType>>,
 }
 
-impl MyApp<'_> {
+impl MyApp {
     pub fn init(log_receiver: Option<mpsc::Receiver<LogType>>) -> Self {
-        Self { page_data: PageData::Home, logs: CircularQueue::with_capacity(16), log_receiver }
+        Self {
+            page_data: PageData::Home,
+            logs: CircularQueue::with_capacity(16),
+            log_receiver,
+            debug_window: false,
+        }
     }
 
     /// Gets the [`Page`] that the current [`PageData`] represents.
@@ -128,33 +136,42 @@ impl MyApp<'_> {
     }
 }
 
-impl Default for MyApp<'_> {
+impl Default for MyApp {
     fn default() -> Self {
         Self {
             page_data: PageData::Home,
             logs: CircularQueue::with_capacity(16),
             log_receiver: None,
+            debug_window: false,
         }
     }
 }
 
-impl MyApp<'_> {
+impl MyApp {
     /// Called once before the first frame.
-    pub fn new(cc: &eframe::CreationContext<'_>, log_receiver: Option<mpsc::Receiver<LogType>>) -> Self {
+    pub fn new(
+        cc: &eframe::CreationContext<'_>,
+        log_receiver: Option<mpsc::Receiver<LogType>>,
+    ) -> Self {
         // This is also where you can customize the look and feel of egui using
         // `cc.egui_ctx.set_visuals` and `cc.egui_ctx.set_fonts`.
 
         // Load previous app state (if any).
         // Note that you must enable the `persistence` feature for this to work.
         if let Some(storage) = cc.storage {
-            return eframe::get_value::<_>(storage, STORAGE_KEY).unwrap_or(Self::init(log_receiver));
+            let mut previous_state: MyApp =
+                eframe::get_value::<_>(storage, STORAGE_KEY).unwrap_or_default();
+
+            // The log_receiver is different on each instance
+            previous_state.log_receiver = log_receiver;
+            return previous_state;
         }
 
         Self::init(log_receiver)
     }
 }
 
-impl eframe::App for MyApp<'_> {
+impl eframe::App for MyApp {
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
         eframe::set_value(storage, STORAGE_KEY, self);
     }
@@ -189,6 +206,8 @@ impl eframe::App for MyApp<'_> {
                     ui.add(egui::Button::new("Home").selected(self.page() == Page::Home));
                 let example_button =
                     ui.add(egui::Button::new("Example").selected(self.page() == Page::Example));
+                let debug_menu =
+                    ui.add(egui::Button::new("Debug Menu").selected(self.debug_window));
 
                 if home_button.clicked() {
                     self.switch_page(Page::Home, frame);
@@ -196,7 +215,14 @@ impl eframe::App for MyApp<'_> {
                 if example_button.clicked() {
                     self.switch_page(Page::Example, frame);
                 }
+                if debug_menu.clicked() {
+                    self.debug_window = !self.debug_window;
+                }
+            });
+        });
 
+        if self.debug_window {
+            egui::Window::new("Debug window").show(ctx, |ui| {
                 let debug_page = ui.add(egui::Button::new("Debug Page"));
                 if debug_page.clicked() {
                     log::info!("Page: {}\nPageData: {:?}", self.page(), self.page_data);
@@ -218,8 +244,14 @@ impl eframe::App for MyApp<'_> {
                 if is_mobile.clicked() {
                     log::info!("Is Mobile: {}", js_imports::is_mobile())
                 }
+
+                ui.separator();
+                ui.label("Log Output:");
+                // Concats log messages
+                let mut collect = self.logs.iter().fold("".to_owned(), |acc, log| acc + log);
+                ui.add(egui::TextEdit::multiline(&mut collect));
             });
-        });
+        }
 
         egui::CentralPanel::default().show(ctx, |ui| {
             match &mut self.page_data {
@@ -258,8 +290,7 @@ impl eframe::App for MyApp<'_> {
                     // ui.with_layout(, )
                     ui.horizontal_wrapped(|ui| {
                         let vec2 = ui.style().spacing.item_spacing.clone();
-                        ui.style_mut().spacing.item_spacing = egui::Vec2::new(0.0,0.0 );
-                        
+                        ui.style_mut().spacing.item_spacing = egui::Vec2::new(0.0,0.0);
                         ui.label("My favorite pastime is fighting with computers, which ");
                         ui.label(egui::RichText::new("sometimes").italics());
                         ui.label(" goes smoothly.");
@@ -270,6 +301,19 @@ impl eframe::App for MyApp<'_> {
                 }
             }
         });
+
+        // Updates the log buffer
+        let log = match &self.log_receiver {
+            Some(receiver) => match receiver.try_recv() {
+                Ok(log) => Some(log),
+                Err(_) => None,
+            },
+            None => None,
+        };
+
+        if let Some((level, text)) = log {
+            self.logs.push(format!("{}: {}\n", level, text));
+        }
     }
 }
 

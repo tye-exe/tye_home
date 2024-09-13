@@ -2,7 +2,7 @@ use std::sync::mpsc;
 
 use eframe::WebLogger;
 
-pub type Transmitted = (log::Level, Option<&'static str>);
+pub type Transmitted = (log::Level, String);
 
 pub struct Logger {
     filter: log::LevelFilter,
@@ -45,9 +45,18 @@ impl log::Log for Logger {
         self.web_logger.log(record);
 
         // Logs to application.
-        let _ = self
+        let send_result = self
             .log_sender
-            .send((record.level(), record.args().as_str()));
+            .send((record.level(), record.args().to_string()));
+
+        // Inform of applocation logging failure.
+        if let Err(_) = send_result {
+            let warn_log = log::Record::builder()
+                .level(log::Level::Warn)
+                .args(format_args!("Unable to send previous log to application."))
+                .build();
+            self.web_logger.log(&warn_log);
+        }
     }
 
     fn flush(&self) {

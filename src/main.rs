@@ -29,6 +29,9 @@ fn main() -> eframe::Result {
 fn main() {
     // Redirect `log` message to `console.log` and friends:
     let receiver = tye_home::Logger::init(log::LevelFilter::Debug).ok();
+    if receiver.is_none() {
+        log::warn!("Debug menu logger unavailable.");
+    }
 
     let web_options = eframe::WebOptions::default();
 
