@@ -21,6 +21,7 @@
               targets = [ "wasm32-unknown-unknown" ];
             })
             trunk
+            bacon
 
             # misc. libraries
             openssl
