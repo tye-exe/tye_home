@@ -1,4 +1,8 @@
-use crate::js_imports;
+use std::sync::mpsc;
+
+use circular_queue::CircularQueue;
+
+use crate::{js_imports, LogType};
 
 /// Default storage key for my app.
 pub const STORAGE_KEY: &'static str = "tye_home";
@@ -95,11 +99,23 @@ impl Page {
 #[derive(serde::Deserialize, serde::Serialize)]
 #[serde(default)]
 /// Contains the current in-memory data for my app.
-pub struct MyApp {
+pub struct MyApp<'a> {
+    /// The data for the currently rendered page.
     page_data: PageData,
+
+    #[serde(skip)]
+    /// A buffer of the 'x' most recent logs.
+    logs: CircularQueue<&'a str>,
+    #[serde(skip)]
+    /// Receives log messages to display.
+    log_receiver: Option<mpsc::Receiver<LogType>>,
 }
 
-impl MyApp {
+impl MyApp<'_> {
+    pub fn init(log_receiver: Option<mpsc::Receiver<LogType>>) -> Self {
+        Self { page_data: PageData::Home, logs: CircularQueue::with_capacity(16), log_receiver }
+    }
+
     /// Gets the [`Page`] that the current [`PageData`] represents.
     pub fn page(&self) -> Page {
         self.page_data.kind()
@@ -112,31 +128,33 @@ impl MyApp {
     }
 }
 
-impl Default for MyApp {
+impl Default for MyApp<'_> {
     fn default() -> Self {
         Self {
             page_data: PageData::Home,
+            logs: CircularQueue::with_capacity(16),
+            log_receiver: None,
         }
     }
 }
 
-impl MyApp {
+impl MyApp<'_> {
     /// Called once before the first frame.
-    pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
+    pub fn new(cc: &eframe::CreationContext<'_>, log_receiver: Option<mpsc::Receiver<LogType>>) -> Self {
         // This is also where you can customize the look and feel of egui using
         // `cc.egui_ctx.set_visuals` and `cc.egui_ctx.set_fonts`.
 
         // Load previous app state (if any).
         // Note that you must enable the `persistence` feature for this to work.
         if let Some(storage) = cc.storage {
-            return eframe::get_value(storage, STORAGE_KEY).unwrap_or_default();
+            return eframe::get_value::<_>(storage, STORAGE_KEY).unwrap_or(Self::init(log_receiver));
         }
 
-        Default::default()
+        Self::init(log_receiver)
     }
 }
 
-impl eframe::App for MyApp {
+impl eframe::App for MyApp<'_> {
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
         eframe::set_value(storage, STORAGE_KEY, self);
     }

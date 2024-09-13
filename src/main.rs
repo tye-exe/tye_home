@@ -28,7 +28,7 @@ fn main() -> eframe::Result {
 #[cfg(target_arch = "wasm32")]
 fn main() {
     // Redirect `log` message to `console.log` and friends:
-    eframe::WebLogger::init(log::LevelFilter::Debug).ok();
+    let receiver = tye_home::Logger::init(log::LevelFilter::Debug).ok();
 
     let web_options = eframe::WebOptions::default();
 
@@ -37,7 +37,7 @@ fn main() {
             .start(
                 "the_canvas_id",
                 web_options,
-                Box::new(|cc| Ok(Box::new(tye_home::MyApp::new(cc)))),
+                Box::new(|cc| Ok(Box::new(tye_home::MyApp::new(cc, receiver)))),
             )
             .await;
 
