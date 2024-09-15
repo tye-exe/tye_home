@@ -95,6 +95,20 @@ impl Page {
     }
 }
 
+#[derive(serde::Deserialize, serde::Serialize, kinded::Kinded, Debug)]
+#[kinded(kind = Layout)]
+/// The different layouts that the app could have.
+pub enum LayoutData {
+    Desktop {},
+    Mobile { tabs_open: bool },
+}
+
+impl Default for LayoutData {
+    fn default() -> Self {
+        Self::Desktop {}
+    }
+}
+
 // We derive Deserialize/Serialize so we can persist app state on shutdown.
 #[derive(serde::Deserialize, serde::Serialize)]
 #[serde(default)]
@@ -106,6 +120,9 @@ pub struct MyApp {
     /// Whether the debug window is open.
     debug_window: bool,
 
+    /// Which layout to render.
+    layout: LayoutData,
+
     #[serde(skip)]
     /// A buffer of the 'x' most recent logs.
     logs: CircularQueue<String>,
@@ -115,18 +132,14 @@ pub struct MyApp {
 }
 
 impl MyApp {
-    pub fn init(log_receiver: Option<mpsc::Receiver<LogType>>) -> Self {
-        Self {
-            page_data: PageData::Home,
-            logs: CircularQueue::with_capacity(16),
-            log_receiver,
-            debug_window: false,
-        }
-    }
-
     /// Gets the [`Page`] that the current [`PageData`] represents.
     pub fn page(&self) -> Page {
         self.page_data.kind()
+    }
+
+    /// Gets the [`Layout`] that the current [`LayoutData`] represents.
+    pub fn layout(&self) -> Layout {
+        self.layout.kind()
     }
 
     /// Saves the current [`PageData`] & loads the [`PageData`] for the given [`Page`].
@@ -143,6 +156,7 @@ impl Default for MyApp {
             logs: CircularQueue::with_capacity(16),
             log_receiver: None,
             debug_window: false,
+            layout: LayoutData::Desktop {},
         }
     }
 }
@@ -156,18 +170,21 @@ impl MyApp {
         // This is also where you can customize the look and feel of egui using
         // `cc.egui_ctx.set_visuals` and `cc.egui_ctx.set_fonts`.
 
-        // Load previous app state (if any).
-        // Note that you must enable the `persistence` feature for this to work.
-        if let Some(storage) = cc.storage {
-            let mut previous_state: MyApp =
-                eframe::get_value::<_>(storage, STORAGE_KEY).unwrap_or_default();
-
-            // The log_receiver is different on each instance
-            previous_state.log_receiver = log_receiver;
-            return previous_state;
+        // Lower scale is too small on mobile.
+        match js_imports::is_mobile() {
+            true => cc.egui_ctx.set_pixels_per_point(1.2),
+            false => cc.egui_ctx.set_pixels_per_point(1.2),
         }
 
-        Self::init(log_receiver)
+        // Load previous app state (if any).
+        let mut app: MyApp = cc
+            .storage
+            .and_then(|storage| eframe::get_value::<_>(storage, STORAGE_KEY))
+            .unwrap_or_default();
+
+        app.log_receiver = log_receiver;
+
+        app
     }
 }
 
@@ -181,42 +198,123 @@ impl eframe::App for MyApp {
         // Put your widgets into a `SidePanel`, `TopBottomPanel`, `CentralPanel`, `Window` or `Area`.
         // For inspiration and more examples, go to https://emilk.github.io/egui
 
-        // Scales the application.
-        ctx.set_pixels_per_point(1.2);
+        // Differences between mobile & desktop site in one place.
+        // let theme_buttons: Box<dyn Fn(&mut egui::Ui)>;
+        // let pages: Box<dyn Fn(&mut egui::Ui, &egui::Context, &mut eframe::Frame, &mut MyApp)>;
+
+        // match self.layout() {
+        //     Layout::Desktop => {
+        //         theme_buttons = Box::new(|ui| {
+        //             egui::widgets::global_dark_light_mode_buttons(ui);
+        //         });
+        //         pages = Box::new(|ui, _, frame, app| {
+        //             let home_button =
+        //                 ui.add(egui::Button::new("Home").selected(app.page() == Page::Home));
+        //             let example_button =
+        //                 ui.add(egui::Button::new("Example").selected(app.page() == Page::Example));
+        //             let debug_menu =
+        //                 ui.add(egui::Button::new("Debug Menu").selected(app.debug_window));
+
+        //             if home_button.clicked() {
+        //                 app.switch_page(Page::Home, frame);
+        //             }
+        //             if example_button.clicked() {
+        //                 app.switch_page(Page::Example, frame);
+        //             }
+        //             if debug_menu.clicked() {
+        //                 app.debug_window = !app.debug_window;
+        //             }
+        //         })
+        //     }
+        //     Layout::Mobile => {
+        //         theme_buttons = Box::new(|ui| {
+        //             egui::widgets::global_dark_light_mode_switch(ui);
+        //         });
+        //         pages = Box::new(|ui, ctx, frame, app| {
+        //             get_mobile!(app, {
+        //                 let page_button = ui.add(egui::Button::new("Pages").selected(tabs_open));
+        //                 if page_button.clicked() {
+        //                     tabs_open = !tabs_open;
+        //                     egui::Window::new("Pages").show(ctx, |ui| {
+        //                         //
+        //                     });
+        //                 }
+        //             });
+        //         })
+        //     }
+        // }
 
         egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
             // The top panel is often a good place for a menu bar:
 
             egui::menu::bar(ui, |ui| {
-                // NOTE: no File->Quit on web pages!
-                if !(cfg!(target_arch = "wasm32")) {
-                    ui.menu_button("File", |ui| {
-                        if ui.button("Quit").clicked() {
-                            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
-                        }
-                    });
-                    ui.add_space(16.0);
+                match self.layout() {
+                    Layout::Desktop => egui::widgets::global_dark_light_mode_buttons(ui),
+                    Layout::Mobile => egui::widgets::global_dark_light_mode_switch(ui),
                 }
-
-                egui::widgets::global_dark_light_mode_buttons(ui);
 
                 ui.add(egui::Separator::default().vertical());
 
-                let home_button =
-                    ui.add(egui::Button::new("Home").selected(self.page() == Page::Home));
-                let example_button =
-                    ui.add(egui::Button::new("Example").selected(self.page() == Page::Example));
-                let debug_menu =
-                    ui.add(egui::Button::new("Debug Menu").selected(self.debug_window));
+                match self.layout {
+                    LayoutData::Desktop {} => {
+                        let home_button =
+                            ui.add(egui::Button::new("Home").selected(self.page() == Page::Home));
+                        let example_button = ui.add(
+                            egui::Button::new("Example").selected(self.page() == Page::Example),
+                        );
 
-                if home_button.clicked() {
-                    self.switch_page(Page::Home, frame);
-                }
-                if example_button.clicked() {
-                    self.switch_page(Page::Example, frame);
-                }
-                if debug_menu.clicked() {
-                    self.debug_window = !self.debug_window;
+                        ui.separator();
+
+                        let debug_menu =
+                            ui.add(egui::Button::new("Debug Menu").selected(self.debug_window));
+
+                        if home_button.clicked() {
+                            self.switch_page(Page::Home, frame);
+                        }
+                        if example_button.clicked() {
+                            self.switch_page(Page::Example, frame);
+                        }
+                        if debug_menu.clicked() {
+                            self.debug_window = !self.debug_window;
+                        }
+                    }
+                    LayoutData::Mobile { ref mut tabs_open } => {
+                        let page_button = ui.add(egui::Button::new("Pages").selected(*tabs_open));
+                        if page_button.clicked() {
+                            *tabs_open = !*tabs_open;
+                        }
+
+                        if *tabs_open {
+                            egui::Window::new("Pages").show(ctx, |ui| {
+                                ui.vertical(|ui| {
+                                    let home_button = ui.add(
+                                        egui::Button::new("Home")
+                                            .selected(self.page() == Page::Home),
+                                    );
+                                    let example_button = ui.add(
+                                        egui::Button::new("Example")
+                                            .selected(self.page() == Page::Example),
+                                    );
+
+                                    ui.separator();
+
+                                    let debug_menu = ui.add(
+                                        egui::Button::new("Debug Menu").selected(self.debug_window),
+                                    );
+
+                                    if home_button.clicked() {
+                                        self.switch_page(Page::Home, frame);
+                                    }
+                                    if example_button.clicked() {
+                                        self.switch_page(Page::Example, frame);
+                                    }
+                                    if debug_menu.clicked() {
+                                        self.debug_window = !self.debug_window;
+                                    }
+                                });
+                            });
+                        }
+                    }
                 }
             });
         });
@@ -240,9 +338,32 @@ impl eframe::App for MyApp {
                     self.page_data = self.page().load(frame);
                 }
 
+                ui.separator();
+                ui.label("Layout Options:");
+
                 let is_mobile = ui.add(egui::Button::new("Is Mobile?"));
+                let toggle_layout = ui.add(egui::Button::new("Toggle Layout"));
+                let reset_layout = ui.add(egui::Button::new("Default Layout"));
+
                 if is_mobile.clicked() {
-                    log::info!("Is Mobile: {}", js_imports::is_mobile())
+                    log::info!("Mobile: {}", self.layout() == Layout::Mobile);
+                }
+                if toggle_layout.clicked() {
+                    self.layout = match self.layout() == Layout::Mobile {
+                        true => LayoutData::Desktop {},
+                        false => LayoutData::Mobile { tabs_open: false },
+                    };
+                    log::info!("New Layout: {}", self.layout());
+                }
+                if reset_layout.clicked() {
+                    let is_mobile = js_imports::is_mobile();
+
+                    self.layout = match is_mobile {
+                        false => LayoutData::Desktop {},
+                        true => LayoutData::Mobile { tabs_open: false },
+                    };
+
+                    log::info!("Default Layout: {}", self.layout());
                 }
 
                 ui.separator();
