@@ -28,6 +28,9 @@ circular-queue = "0.2.6"
 serde_json = "1.0.128"
 reqwest = { version = "0.12.6" }
 thiserror = "1.0.63"
+egui_commonmark = { version = "0.18.0", features = ["macros"] }
+# Manually resolves dependency version conflicts
+proc-macro-crate = "3.2.0"
 
 # native:
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]

@@ -1,4 +1,4 @@
-use std::{borrow::Cow, error::Error, fmt::Display, sync::mpsc};
+use std::sync::mpsc;
 
 use circular_queue::CircularQueue;
 
@@ -464,6 +464,9 @@ impl eframe::App for MyApp {
                     });
                 }
                 PageData::Home => {
+                    use egui_commonmark::{CommonMarkCache, CommonMarkViewer, commonmark};
+                    commonmark!(ui, &mut Default::default(), "# Test o.0");
+
                     ui.heading("Welcome!");
                     ui.separator();
                     ui.label("Hello, i'm tye! I'm non-binary & go by they/them, thank you for being respectfull.");
