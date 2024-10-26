@@ -26,7 +26,7 @@ fn main() -> eframe::Result {
 
 // When compiling to web using trunk:
 #[cfg(target_arch = "wasm32")]
-fn main() {
+fn main() -> Result<(), tye_home::app::InitError> {
     // Redirect `log` message to `console.log` and friends:
     let receiver = tye_home::Logger::init(log::LevelFilter::Debug).ok();
     if receiver.is_none() {
@@ -40,7 +40,7 @@ fn main() {
             .start(
                 "the_canvas_id",
                 web_options,
-                Box::new(|cc| Ok(Box::new(tye_home::MyApp::new(cc, receiver)))),
+                Box::new(|cc| Ok(Box::new(tye_home::MyApp::new(cc, receiver)?))),
             )
             .await;
 
@@ -64,4 +64,6 @@ fn main() {
             }
         }
     });
+
+    Ok(())
 }

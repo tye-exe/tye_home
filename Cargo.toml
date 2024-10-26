@@ -25,6 +25,9 @@ serde = { version = "1", features = ["derive"] }
 kinded = "0.3.0"
 wasm-bindgen = "0.2.93"
 circular-queue = "0.2.6"
+serde_json = "1.0.128"
+reqwest = { version = "0.12.6" }
+thiserror = "1.0.63"
 
 # native:
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]

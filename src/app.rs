@@ -1,17 +1,26 @@
-use std::sync::mpsc;
+use std::{borrow::Cow, error::Error, fmt::Display, sync::mpsc};
 
 use circular_queue::CircularQueue;
 
 use crate::{js_imports, LogType};
 
 /// Default storage key for my app.
-pub const STORAGE_KEY: &'static str = "tye_home";
+pub const STORAGE_KEY: &str = "tye_home";
+
+pub const LAYOUT_KEY: &str = "tye_home-Layout";
 
 /// Creates the storage key for the given page.
 /// This is a macro due to ownership limitations.
 macro_rules! page_storage_key {
     ($string:expr) => {
         format! {"{STORAGE_KEY}-{}", $string}.as_str()
+    };
+}
+
+/// Inputs a blank line.
+macro_rules! new_line {
+    ($ui:expr) => {
+        $ui.label("");
     };
 }
 
@@ -131,6 +140,18 @@ pub struct MyApp {
     log_receiver: Option<mpsc::Receiver<LogType>>,
 }
 
+impl Default for MyApp {
+    fn default() -> Self {
+        Self {
+            page_data: PageData::Home,
+            debug_window: false,
+            layout: LayoutData::Desktop {},
+            logs: CircularQueue::with_capacity(16),
+            log_receiver: None,
+        }
+    }
+}
+
 impl MyApp {
     /// Gets the [`Page`] that the current [`PageData`] represents.
     pub fn page(&self) -> Page {
@@ -149,16 +170,10 @@ impl MyApp {
     }
 }
 
-impl Default for MyApp {
-    fn default() -> Self {
-        Self {
-            page_data: PageData::Home,
-            logs: CircularQueue::with_capacity(16),
-            log_receiver: None,
-            debug_window: false,
-            layout: LayoutData::Desktop {},
-        }
-    }
+#[derive(thiserror::Error, Debug)]
+pub enum InitError {
+    #[error("Unable to access storage.")]
+    StorageError(),
 }
 
 impl MyApp {
@@ -166,7 +181,7 @@ impl MyApp {
     pub fn new(
         cc: &eframe::CreationContext<'_>,
         log_receiver: Option<mpsc::Receiver<LogType>>,
-    ) -> Self {
+    ) -> Result<Self, InitError> {
         // This is also where you can customize the look and feel of egui using
         // `cc.egui_ctx.set_visuals` and `cc.egui_ctx.set_fonts`.
 
@@ -176,15 +191,61 @@ impl MyApp {
             false => cc.egui_ctx.set_pixels_per_point(1.2),
         }
 
+        async fn fun_name() -> Result<(), Box<dyn std::error::Error>> {
+            let response =
+                reqwest::get("https://discordlookup.mesalytic.moe/v1/user/1192519637448011827")
+                    .await?
+                    .text()
+                    .await?;
+            let response: serde_json::Value = serde_json::from_str(&response)?;
+
+            log::debug!("pfp: {}", response["raw"]["global_name"]);
+            // log::debug!("pfp: {}", response["raw"][""]);
+            // egui::include_image!()
+            // let uri = response["avatar"]["link"].as_str().ok_or(EmptyError())?;
+            // egui::Image::from_uri(uri).rounding(0.5);
+
+            Ok(())
+        }
+
+        wasm_bindgen_futures::spawn_local(async {
+            fun_name().await;
+        });
+
+        // let response = reqwest::blocking::
+        // log::debug!()
+
         // Load previous app state (if any).
-        let mut app: MyApp = cc
-            .storage
-            .and_then(|storage| eframe::get_value::<_>(storage, STORAGE_KEY))
-            .unwrap_or_default();
+        // let mut app: MyApp = cc
+        //     .storage
+        //     .and_then(|storage| eframe::get_value::<_>(storage, STORAGE_KEY))
+        //     .map(|mut app: MyApp| {app.log_receiver = log_receiver; app})
+        //     .unwrap_or_default();
+
+        // app.layout = match js_imports::is_mobile() {
+        //     true => LayoutData::Mobile { tabs_open:  },
+        //     false => LayoutData::Desktop {  },
+        // }
+
+        // app
+
+        let storage = cc.storage.ok_or(InitError::StorageError())?;
+        let mut app = eframe::get_value(storage, STORAGE_KEY).unwrap_or_else(|| {
+            let layout =
+                eframe::get_value(storage, LAYOUT_KEY).unwrap_or_else(
+                    || match js_imports::is_mobile() {
+                        true => LayoutData::Mobile { tabs_open: false },
+                        false => LayoutData::Desktop {},
+                    },
+                );
+            let mut app = MyApp::default();
+            app.layout = layout;
+            app
+        });
 
         app.log_receiver = log_receiver;
 
-        app
+        Ok(app)
     }
 }
 
@@ -326,9 +387,9 @@ impl eframe::App for MyApp {
                     log::info!("Page: {}\nPageData: {:?}", self.page(), self.page_data);
                 }
 
-                let reset_storage = ui.add(egui::Button::new("Reset Storage"));
+                let reset_storage = ui.add(egui::Button::new("Reset Page"));
                 if reset_storage.clicked() {
-                    // Overwrites the saved data with default values.
+                    // Overwrites the page saved data with default values.
                     for page in Page::all().to_owned() {
                         let page_data: PageData = page.into();
                         page_data.save(frame);
@@ -406,7 +467,7 @@ impl eframe::App for MyApp {
                     ui.heading("Welcome!");
                     ui.separator();
                     ui.label("Hello, i'm tye! I'm non-binary & go by they/them, thank you for being respectfull.");
-                    ui.label("");
+                    new_line!(ui);
 
                     // ui.with_layout(, )
                     ui.horizontal_wrapped(|ui| {
@@ -414,8 +475,21 @@ impl eframe::App for MyApp {
                         ui.style_mut().spacing.item_spacing = egui::Vec2::new(0.0,0.0);
                         ui.label("My favorite pastime is fighting with computers, which ");
                         ui.label(egui::RichText::new("sometimes").italics());
-                        ui.label(" goes smoothly.");
-                        // ui.label("test o.0");
+                        ui.label(" goes smoothly. ");
+
+                        ui.label("Well not really, it's more-so an everconstant upwards battle against whatever devil could possible decide to haunt these damn machies; But i digress.");
+                        ui.style_mut().spacing.item_spacing = vec2;
+                    });
+
+                    new_line!(ui);
+
+                    ui.horizontal_wrapped(|ui| {
+                        let vec2 = ui.style().spacing.item_spacing.clone();
+                        ui.style_mut().spacing.item_spacing = egui::Vec2::new(0.0,0.0);
+
+                        ui.label("When the computers ");
+                        ui.label(egui::RichText::new("decide").italics());
+                        ui.label("to work ");
 
                         ui.style_mut().spacing.item_spacing = vec2;
                     });
